@@ -1,0 +1,16 @@
+{
+    "name": "Santa Ana Happy Ending Massage",
+    "short_name": "Santa Ana Happy Ending Massage \ud83c\udf0d",
+    "description": "Find Happy Ending Massage in Santa Ana, El Salvador. Our growing directory lists parlors in central areas with sessions from 20-50 EUR. Practical info for visitors.",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "#ffffff",
+    "theme_color": "#e91e63",
+    "icons": [
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
+        }
+    ]
+}

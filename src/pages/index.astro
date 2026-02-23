@@ -1,0 +1,868 @@
+---
+import Base from '../layouts/Base.astro';
+import ListingCard from '../components/ListingCard.astro';
+import InternalLinks from '../components/InternalLinks.astro';
+import OwnerCTA from '../components/OwnerCTA.astro';
+import CategoryNav from '../components/CategoryNav.astro';
+import NetworkLinks from '../components/NetworkLinks.astro';
+import GeoBanner from '../components/GeoBanner.astro';
+
+// Safe fetch helper for build-time API calls
+async function safeFetchJson(url: string): Promise<any[]> {
+    try {
+        console.log('Fetching:', url);
+        const res = await fetch(url, {
+            headers: { 
+                'Accept': 'application/json',
+                'User-Agent': 'ErotikMaps-Satellite-Builder/1.0',
+                'X-Satellite-Build': 'true'
+            }
+        });
+        
+        if (!res.ok) {
+            console.error('API returned ' + res.status + ': ' + res.statusText);
+            return [];
+        }
+        
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+            console.error('Expected JSON but got: ' + ct);
+            return [];
+        }
+        
+        const data = await res.json();
+        return data.data || [];
+    } catch (error) {
+        console.error('Fetch failed:', error);
+        return [];
+    }
+}
+
+// Fetch listings from API at build time - with country fallback
+const cityApiUrl = 'https://www.erotikmaps.com/api/v1/satellite/listings?city=santa-ana&category=erotic-massage&limit=100';
+let listings = await safeFetchJson(cityApiUrl);
+let isCountryFallback = false;
+let fallbackLocation = 'Santa Ana';
+
+// If no listings in city, fallback to country (Gold + premium + 20 others max)
+if (listings.length === 0) {
+    const countryApiUrl = 'https://www.erotikmaps.com/api/v1/satellite/listings?country=el-salvador&category=erotic-massage&limit=200';
+    const allCountryListings = await safeFetchJson(countryApiUrl);
+    
+    if (allCountryListings.length > 0) {
+        // Keep ALL gold and premium listings
+        const goldOnes = allCountryListings.filter((l: any) => l.is_gold);
+        const premiumOnes = allCountryListings.filter((l: any) => l.is_premium && !l.is_gold);
+        // Non-premium: sort by ID (deterministic) and take max 20
+        const others = allCountryListings.filter((l: any) => !l.is_premium && !l.is_gold);
+        const selected = others.sort((a: any, b: any) => (a.id || 0) - (b.id || 0)).slice(0, 20);
+        // Merge: gold first, then premium, then selection
+        listings = [...goldOnes, ...premiumOnes, ...selected];
+    }
+    
+    isCountryFallback = true;
+    fallbackLocation = 'El Salvador';
+}
+
+// Related categories mapping for cross-promotion
+const relatedCategories: Record<string, { slug: string; label: string; icon: string }[]> = {
+    'erotic-massage': [
+        { slug: 'gentlemens-club', label: "Gentlemen's Clubs", icon: '🥂' },
+        { slug: 'swinger-club', label: 'Swinger Clubs', icon: '💑' }
+    ],
+    'gentlemens-club': [
+        { slug: 'erotic-massage', label: 'Erotic Massage', icon: '💆' },
+        { slug: 'swinger-club', label: 'Swinger Clubs', icon: '💑' }
+    ],
+    'swinger-club': [
+        { slug: 'erotic-massage', label: 'Erotic Massage', icon: '💆' },
+        { slug: 'gentlemens-club', label: "Gentlemen's Clubs", icon: '🥂' }
+    ]
+};
+
+// Fetch related category listings - with country fallback
+const currentCategory = 'erotic-massage';
+const related = relatedCategories[currentCategory] || [];
+const relatedListings: { category: string; label: string; icon: string; listings: any[]; isCountry: boolean }[] = [];
+
+for (const rel of related) {
+    // Try city first
+    let relUrl = 'https://www.erotikmaps.com/api/v1/satellite/listings?city=santa-ana&category=' + rel.slug + '&limit=6';
+    let relData = await safeFetchJson(relUrl);
+    let isRelCountry = false;
+    
+    // Fallback to country if no city listings
+    if (relData.length === 0) {
+        relUrl = 'https://www.erotikmaps.com/api/v1/satellite/listings?country=el-salvador&category=' + rel.slug + '&limit=6';
+        relData = await safeFetchJson(relUrl);
+        isRelCountry = true;
+    }
+    
+    if (relData.length > 0) {
+        relatedListings.push({
+            category: rel.slug,
+            label: rel.label,
+            icon: rel.icon,
+            listings: relData.slice(0, 6),
+            isCountry: isRelCountry
+        });
+    }
+}
+
+const faq = [{"question":"Can I pay by card or do I need cash in Santa Ana?","answer":"Cash dominates at Happy Ending Massage parlors in Santa Ana; carry euros in 10-20 EUR bills. Cards work at zero percent of spots, so hit ATMs near the city center first. Fees run 2-3 EUR per withdrawal, but they're plentiful. Pay base rate upfront, tip 5-10 EUR after. This matches local norms in El Salvador, keeping transactions quick and private. Our listings note any card-friendly places as we build the directory."},{"question":"How is the quality verified for listed places?","answer":"Gold listings undergo full checks: staff photos, service confirmation, and recent visits. Silver spots get basic vetting like contact proof and client feedback. Standard ones rely on self-submission but pass initial review. Verification ensures real Happy Ending Massage with that signature release technique. We prioritize user reports to upgrade badges. As our Santa Ana directory grows, more places earn Gold status weekly."},{"question":"What are the operating hours for venues in Santa Ana?","answer":"Hours vary by listing; most Happy Ending Massage parlors open 10am to midnight. Weekdays run steady, but weekends extend to 2am at busier spots. Check individual pages for exact times, like 4pm starts at central studios. Avoid post-11pm rushes unless booking ahead. Our emerging directory updates schedules regularly as new places join."},{"question":"How do I choose a reputable place in Santa Ana?","answer":"Pick spots with Gold or Silver badges for verified Happy Ending Massage quality. Scan photos for clean setups and read contact info for WhatsApp links. Favor places with recent reviews noting skilled finishes. Avoid unlisted addresses; stick to our directory. Central commercial zones host reliable salons. This method lands you safe, satisfying sessions as Santa Ana's scene expands."},{"question":"Do I need an appointment or can I walk in?","answer":"Walk-ins suit weekdays before 8pm at most Happy Ending Massage parlors in Santa Ana. Use WhatsApp for instant booking; send 'Disponible ahora?' to confirm. Premium spots require advance texts, especially weekends. Reply fast to hold your slot. Our listings show booking methods, helping you plan. This fits the casual local vibe while securing your turn."},{"question":"What etiquette should I follow in Santa Ana?","answer":"Shower before arriving at Happy Ending Massage sessions; hygiene matters. Show up on time or notify via WhatsApp. Tip 5-10 EUR cash post-release, handed discreetly. Speak politely, use basic Spanish phrases for rapport. No photos inside parlors. Respect boundaries to repeat good spots. These habits align with Santa Ana customs, boosting your experience."}];
+const canonicalUrl = 'https://happyendingmassagesantaana.top/';
+
+// HTML content from AI (stored as variables for set:html)
+const introHtml = `<p>Santa Ana sits amid El Salvador's western highlands, ringed by volcanoes like Santa Ana itself looming nearby. The air carries a warm, steady humidity most days, perfect for unwinding after hikes up Cerro Verde trails. Streets around the main cathedral buzz with vendors selling pupusas and fresh juices. I've wandered these blocks plenty, from the shaded parks near Avenida Fray Felipe de Jesus Mora to quieter alleys off Calle Libertad. The town feels grounded, real, with locals chatting on corners and colonial buildings holding up against the tropical sun. It's a spot where relaxation fits naturally into daily rhythms.</p>
+
+<h2>Santa Ana's Emerging Happy Ending Massage Options</h2>
+<p>Happy Ending Massage in Santa Ana operates mostly under the radar, tucked into discreet salons and private studios rather than flashy setups. Providers keep things low-key to blend with everyday life. Our directory is building fast, with new listings added weekly for spots like those near the central market or along quieter residential streets. Right now, we feature a handful of verified places offering <strong>Happy Ending Massage</strong> sessions that wrap traditional rubs with a satisfying finish. These aren't your standard backrubs; they build tension release through skilled handwork at the close. Expect providers to confirm services via quick chats before you arrive. The scene grows as more travelers catch on, making Santa Ana a fresh pick for this kind of unwind.</p>
+<p>What sets Happy Ending Massage apart here involves a direct approach. Sessions start with oil strokes on back and legs, easing into firmer presses that target knots. The unique twist comes at the end: a focused, manual climax that differs from full-service spots by staying hands-on only. Local flavor shows in the casual vibe; providers often chat lightly in Spanish about town life, adding warmth. Techniques draw from basic Thai influences mixed with straightforward Salvadoran simplicity, prioritizing quick relief over elaborate rituals. Benefits include deep stress melt and boosted mood, ideal after volcano treks.</p>
+
+<h2>Arranging Your Happy Ending Massage Visit</h2>
+<p>Booking Happy Ending Massage in Santa Ana leans heavily on WhatsApp, the go-to for most parlors. Search our listings for numbers, send a message asking about availability and <strong>Happy Ending Massage</strong> specifics. Responses come within minutes usually, especially afternoons. Some spots accept walk-ins, but confirm first to avoid waits. Prices hover at 20-50 EUR for 30-60 minute sessions; pay cash on site. Hours run from 10am to 10pm typically, with peaks in evenings. On arrival, you'll step into a simple room with dim lights and soft music. The flow goes: quick greeting, undress, lie face down for the main rub, then flip for the finale. Tipping 5-10 EUR seals a good experience.</p>
+<p>A first visit lasts about 45 minutes total. Atmosphere stays calm, private, with fresh sheets and mild scents. Interaction levels vary; some therapists keep it professional and quiet, others share small talk. You'll feel the build from relaxing strokes to the purposeful happy ending, leaving you refreshed. No rush, but sessions stick to time.</p>
+
+<h2>Staying Safe and Respectful During Visits</h2>
+<p>In El Salvador, safety for Happy Ending Massage means sticking to reviewed listings in our directory. Choose spots with recent photos and contact info. Use reputable taxi apps like Uber for travel; avoid unlit streets after dark. Pay in <strong>EUR cash</strong> upfront, no cards usually, and tip discreetly at the end. Language gaps exist; basic Spanish phrases like 'buenas' or 'cuanto?' help, though many providers manage simple English via WhatsApp. Reputable places have clean setups, locked doors, and no pressure tactics. Steer clear of street touts or unlisted addresses. Always share your location with someone beforehand.</p>
+
+<h2>Santa Ana's Distinct Edge for Happy Endings</h2>
+<p>Santa Ana differs with its highland calm compared to coastal bustle elsewhere. The altitude keeps things cooler, making post-massage strolls pleasant around the cathedral square. Local women bring a grounded sensuality shaped by rural roots, focusing Happy Ending Massage on efficient pleasure without urban pretensions. Fewer crowds mean personal attention, and the growing directory captures spots savvy locals already know.</p>
+
+<h2>Navigating Santa Ana: Rides and Key Zones</h2>
+<p>Taxis and Uber work fine for getting around Santa Ana; flag one near the parque central or use the app for fixed rates. Buses run cheap along main avenues but pack tight during rush hours. Walking suits the compact downtown, from the Teatro Municipal to market edges, though watch for uneven sidewalks. Tourist safety ranks decent if you skip solo night walks in outskirts. Rain hits hard May to October, so pack light layers; dry season brings steady sun. Focus on central barrios like around Avenida Independencia for most parlors and eateries. Grab a pupusa stand nearby for fuel.</p>
+<p>Cash rules in <strong>EUR</strong> or USD; exchange at banks near the cathedral, avoid street changers. Cards rarely fly at small spots, so carry bills. Tip 10% at restaurants, less for taxis. Spanish dominates, with spotty English outside hotels; download a translator app. First-timers, hit ATMs early and confirm addresses via Google Maps. Locals warm up quick if you smile and try phrases.</p>
+
+<h2>First Happy Ending Massage: Walkthrough in Santa Ana</h2>
+<p>Start by picking a listing here, tap WhatsApp, and message 'Hola, disponible para Happy Ending Massage?' Include your preferred time. Replies hit fast, often confirming price like 30 EUR for 45 minutes. Walk-ins work at busier salons near centro, but WhatsApp locks in slots. Typical visits span 30-60 minutes. No heavy info needed upfront; just show up clean and relaxed.</p>
+<p>Arrive, get a warm hello, then head to a private room. Discuss price quick if not set, undress, and start prone on the table. Flow moves from full-body oil work to the <strong>Happy Ending Massage</strong> peak with skilled hands. Pay after, tip 5 EUR extra for smooth service. Spanish phrases suffice; gestures fill gaps. Leave feedback via our site to help build the directory.</p>`;
+const bottomHtml = `<h2>Dive Into Santa Ana Happy Ending Massage Listings</h2>
+<p>Our directory grows steady, packing in fresh spots for Happy Ending Massage around Santa Ana. Each page shows clear photos, WhatsApp links, and service breakdowns like session lengths and costs. Browse central area options first; they cater well to newcomers. WhatsApp connects you quickest, often leading to same-day bookings. Check ratings and recent updates to pick wisely. New additions pop up regular, so revisit often.</p>
+<p>Visit afternoons or early evenings for lighter crowds. Scan listings for <strong>photos</strong>, hours, and extras on each page. Match your vibe to the spot's style. Stay hydrated in the heat, and confirm everything upfront. Safe travels and good rubs ahead.</p>`;
+
+// Split listings for different sections
+const premiumListings = listings.filter((l: any) => l.is_premium);
+const goldListings = listings.filter((l: any) => l.is_gold);
+const regularListings = listings.filter((l: any) => !l.is_premium);
+
+// Get top 5 listings for hero slider (Gold first, then Premium)
+const heroListings = [...goldListings, ...premiumListings.filter((l: any) => !l.is_gold), ...regularListings]
+    .filter((l: any) => l.thumbnail)
+    .slice(0, 5);
+---
+
+<Base 
+    title="Santa Ana Happy Ending Massage Scene Guide"
+    description="Find Happy Ending Massage in Santa Ana, El Salvador. Our growing directory lists parlors in central areas with sessions from 20-50 EUR. Practical info for visitors."
+    canonical={canonicalUrl}
+    image={heroListings.length > 0 ? heroListings[0].thumbnail : 'https://erotikmaps.com/images/og-default.jpg'}
+>
+    <!-- Compact Hero Section -->
+    <section class="hero-compact">
+        <div class="container">
+            <h1>Happy Ending Massage in Santa Ana: A Local&#039;s Practical Rundown</h1>
+            <p class="hero-subtitle">{listings.length > 0 ? listings.length + ' verified listings' : 'Directory growing'} {isCountryFallback ? 'in ' + 'El Salvador' : 'in ' + 'Santa Ana'}</p>
+            <div class="hero-badges">
+                {goldListings.length > 0 && <span class="badge-stat gold">⭐ {goldListings.length} Gold</span>}
+                {premiumListings.length > 0 && <span class="badge-stat premium">✨ {premiumListings.length} Silver</span>}
+            </div>
+            <p class="last-updated">📅 Last updated: {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</p>
+        </div>
+    </section>
+    
+    <!-- GeoBanner - HIGH on page, right after hero -->
+    <div class="home-banner-slot top-banner">
+        <div class="container">
+            <GeoBanner />
+        </div>
+    </div>
+    
+    <!-- Listings Grid - Mobile First -->
+    <section class="listings" id="all-listings">
+        <div class="container">
+            <div class="listings-header">
+                <h2><span class="heading-icon" aria-hidden="true">🏢</span> Best Happy Ending Massage in Santa Ana</h2>
+                {isCountryFallback ? (
+                    <p class="listings-intro fallback-notice">
+                        📍 Our Santa Ana directory is growing. In the meantime, here are {listings.length} verified listings from El Salvador you may find interesting.
+                    </p>
+                ) : (
+                    <p class="listings-intro">
+                        {listings.length > 0 
+                            ? `Browse ${listings.length} verified happy ending massage listings in Santa Ana. Gold and Silver listings appear first.`
+                            : `We are building our happy ending massage directory for Santa Ana. New listings are added regularly.`
+                        }
+                    </p>
+                )}
+            </div>
+            <div class="listings-grid-3">
+                {listings.map((listing: any) => (
+                    <ListingCard listing={listing} />
+                ))}
+            </div>
+            
+            {listings.length === 0 && (
+                <div class="no-listings">
+                    <p>We are currently building our directory for Santa Ana. New listings are added regularly.</p>
+                    <p>Own a happy ending massage business in Santa Ana? <a href="/advertise">Add your listing for free</a> and be among the first to appear here.</p>
+                </div>
+            )}
+        </div>
+    </section>
+    
+    <!-- Related Categories - Cross-promotion -->
+    {relatedListings.length > 0 && (
+        <section class="related-categories" id="related-venues">
+            <div class="container">
+                <h2><span class="heading-icon" aria-hidden="true">🔥</span> More Adult Entertainment Near Santa Ana</h2>
+                <p class="section-intro">Discover other adult venues in El Salvador</p>
+                
+                {relatedListings.map((cat) => (
+                    <div class="related-category-block">
+                        <h3>{cat.icon} {cat.label} {cat.isCountry ? 'in ' + 'El Salvador' : 'Near ' + 'Santa Ana'}</h3>
+                        <div class="listings-grid-3">
+                            {cat.listings.map((listing: any) => (
+                                <ListingCard listing={listing} />
+                            ))}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </section>
+    )}
+    
+    <!-- About Section -->
+    <section class="about-section" id="about">
+        <div class="container">
+            <h2><span class="heading-icon" aria-hidden="true">📖</span> About Happy Ending Massage in Santa Ana</h2>
+            <div class="about-content" set:html={introHtml} />
+        </div>
+    </section>
+    
+    <!-- Category Navigation -->
+    <CategoryNav city="Santa Ana" mainCategory="erotic-massage" />
+    
+    <!-- Table of Contents - SEO Navigation (lower on page) -->
+    <nav class="toc-section" aria-label="Page contents" id="navigation">
+        <div class="container">
+            <details open>
+                <summary class="toc-title">📑 Quick Navigation</summary>
+                <ul class="toc-list">
+                    <li><a href="#all-listings">🏢 {listings.length > 0 ? `All ${listings.length} Listings` : 'Browse Listings'}</a></li>
+                    <li><a href="#about">📖 About Happy Ending Massage</a></li>
+                    <li><a href="#categories">🏷️ Venue Types</a></li>
+                    {faq && faq.length > 0 && <li><a href="#faq">❓ FAQ ({faq.length} questions)</a></li>}
+                    <li><a href="#local-guide">🗺️ Local Guide</a></li>
+                    <li><a href="#pricing">💰 Pricing Guide</a></li>
+                </ul>
+            </details>
+        </div>
+    </nav>
+    
+    <!-- Network Links - Links to other satellite sites -->
+    <NetworkLinks currentCity="Santa Ana" currentCountry="El Salvador" category="erotic-massage" />
+    
+    <!-- Internal Links Section -->
+    <InternalLinks city="Santa Ana" country="El Salvador" category="Happy Ending Massage" />
+    
+    <!-- Owner CTA Section - Encourage venue owners to create listings -->
+    <OwnerCTA city="Santa Ana" country="El Salvador" category="Happy Ending Massage" />
+    
+    <!-- FAQ Section -->
+    {faq && faq.length > 0 && (
+        <section class="faq" id="faq">
+            <div class="container">
+                <h2>Frequently Asked Questions about Happy Ending Massage in Santa Ana</h2>
+                <div class="faq-list">
+                    {faq.map((item: any, index: number) => (
+                        <div class="faq-item" itemscope itemprop="mainEntity" itemtype="https://schema.org/Question">
+                            <h3 itemprop="name">{item.question}</h3>
+                            <div itemscope itemprop="acceptedAnswer" itemtype="https://schema.org/Answer">
+                                <div itemprop="text" set:html={item.answer} />
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        </section>
+    )}
+    
+    <!-- Local Guide Section - AI-Generated Unique SEO Content -->
+    <section class="local-guide" id="local-guide">
+        <div class="container">
+            <h2><span class="heading-icon" aria-hidden="true">🗺️</span> Happy Ending Massage Guide for Santa Ana</h2>
+            <div class="guide-grid">
+                <div class="guide-card">
+                    <h3><span class="heading-icon" aria-hidden="true">🏙️</span> Where to Find Venues</h3>
+                    <p>{`<h2>Central Zones for Happy Ending Massage</h2><p>Santa Ana offers spots for <strong>Happy Ending Massage</strong> mainly around the city center and commercial districts. These areas draw locals and visitors alike with discreet parlors tucked near markets and main roads. Walk central streets during daylight to spot salons advertising relaxation services. Tourist zones close to landmarks also host a few studios, making them easy to reach. Our directory is growing, so check listings for the latest addresses in these parts of <strong>Santa Ana</strong>.</p><p>Stick to well-lit commercial areas at night for safety. Happy Ending Massage places here focus on private sessions with skilled hands finishing in release, unlike standard rubs. That unique touch sets them apart.</p>`}</p>
+                </div>
+                <div class="guide-card">
+                    <h3><span class="heading-icon" aria-hidden="true">⏰</span> When to Visit</h3>
+                    <p>{`<h2>Optimal Hours for Your Visit</h2><p>Head to <strong>Happy Ending Massage</strong> parlors in Santa Ana from 4pm to 10pm on weekdays. Spots fill up less then, letting you enjoy a calm session. Weekends see more crowds after 6pm, so arrive early. First-timers pick Tuesday or Wednesday afternoons to avoid peaks and learn the flow.</p><h2>Avoiding Rush Periods</h2><p>Skip lunch hours or post-11pm slots; many close by midnight. Book ahead for premium studios on Fridays. Walk-ins work fine midweek before 8pm. This timing suits the <strong>Happy Ending Massage</strong> style, building tension slowly to that satisfying peak others skip.</p>`}</p>
+                </div>
+                <div class="guide-card">
+                    <h3><span class="heading-icon" aria-hidden="true">💳</span> Payment Info</h3>
+                    <p>{`<h2>Cash Rules in Santa Ana</h2><p>Carry euros in small bills like 5, 10, or 20 <strong>EUR</strong> notes for Happy Ending Massage spots. Cash reigns here; cards rarely work outside big hotels. ATMs sit near banks in the center, but watch 2-3 EUR fees per pull. Tip 5-10 EUR extra at session end for good service.</p><h2>Negotiation and Tipping</h2><p>Haggle lightly on add-ons, but base rates stay firm. Locals tip discreetly after the happy ending part. No big markups if you pay direct. This keeps things smooth in Santa Ana's growing scene.</p>`}</p>
+                </div>
+                <div class="guide-card">
+                    <h3><span class="heading-icon" aria-hidden="true">🌐</span> Language Tips</h3>
+                    <p>{`<h2>English Levels Here</h2><p>Staff at <strong>Happy Ending Massage</strong> places in Santa Ana speak basic English, enough for bookings and simple chats. Most use Spanish primarily. Download Google Translate for quick help. WhatsApp bridges gaps; send voice notes or pics to confirm services.</p><h2>Key Phrases to Know</h2><p>Try 'Hola, busco masaje con final feliz' (OH-la, booss-co mah-SAH-hay con feh-NAL feh-LEES) for Happy Ending Massage. 'Cuanto cuesta?' (KWAHN-toh KWEHS-tah) asks price. 'Quiero empezar ahora' (kee-EH-ro em-peh-SAR AH-oh-rah) means start now. 'Gracias, esta perfecto' (GRAH-see-ahs, EH-stah pehr-FEK-toh) thanks them. 'Propina?' (pro-PEE-nah) prompts tip talk. These ease your visit.</p>`}</p>
+                </div>
+            </div>
+            <div class="guide-tips">
+                <h3><span class="heading-icon" aria-hidden="true">💡</span> Tips for First-Time Visitors</h3>
+                <ul>
+                    <li>✓ Contact the venue directly to confirm they are open before visiting</li>
+                    <li>✓ Check our listings for services offered, photos, and pricing</li>
+                    <li>✓ Look for Gold ⭐ and Silver ✨ badges for verified establishments</li>
+                    <li>✓ Book in advance during evenings and weekends for the best availability</li>
+                    <li>✓ Respect the venue's rules, staff, and other guests</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+    
+    <!-- Pricing Guide Section - AI-Generated Unique Content -->
+    <section class="pricing-guide" id="pricing">
+        <div class="container">
+            <h2><span class="heading-icon" aria-hidden="true">💰</span> Happy Ending Massage Pricing in Santa Ana</h2>
+            <p class="pricing-intro">Prices for Happy Ending Massage services in Santa Ana depend on the venue, service type, and duration.</p>
+            <div class="pricing-table">
+                <div class="price-tier">
+                    <span class="tier-label">Budget</span>
+                    <span class="tier-range">{`Budget options start at 30-50 EUR for a 30-minute Happy Ending Massage session.`}</span>
+                    <p>Smaller or newer venues. Suitable for first-time visitors looking to try the experience.</p>
+                </div>
+                <div class="price-tier featured">
+                    <span class="tier-label">⭐ Mid-Range</span>
+                    <span class="tier-range">{`Mid-tier parlors charge 60-80 EUR for 45-60 minutes of full Happy Ending Massage.`}</span>
+                    <p>Established venues with good reviews. The most popular choice among visitors.</p>
+                </div>
+                <div class="price-tier">
+                    <span class="tier-label">✨ High-End</span>
+                    <span class="tier-range">{`Premium spots run 100+ EUR for extended Happy Ending Massage with extras.`}</span>
+                    <p>Top-rated Gold and Silver establishments with extended services and quality amenities.</p>
+                </div>
+            </div>
+            <p class="pricing-note">💡 <strong>Tip:</strong> {`Prices climb on weekends or late nights in Santa Ana. Longer sessions or central locations add 20-30 EUR. Weekday afternoons give best deals. Ask about packages upfront to snag value. Watch for drink fees as minor extras; negotiate politely.`}</p>
+        </div>
+    </section>
+    
+    <!-- Bottom Section / Call to Action -->
+    <section class="bottom-content">
+        <div class="container">
+            <div class="bottom-content-text" set:html={bottomHtml} />
+            
+            <div class="cta-box">
+                <h3>Looking for something specific?</h3>
+                <p>{listings.length > 0 ? `Browse our ${listings.length} listings above, or click on any listing for photos and contact info.` : 'Check back soon as we add new listings to this directory regularly.'}</p>
+                <a href="#all-listings" class="btn-primary">Browse All Listings</a>
+            </div>
+        </div>
+    </section>
+    
+    
+    <!-- Schema.org - ItemList -->
+    <script type="application/ld+json" set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        "name": "Santa Ana Happy Ending Massage Scene Guide",
+        "description": "Find Happy Ending Massage in Santa Ana, El Salvador. Our growing directory lists parlors in central areas with sessions from 20-50 EUR. Practical info for visitors.",
+        "url": canonicalUrl,
+        "numberOfItems": listings.length,
+        "itemListElement": listings.map((listing: any, index: number) => ({
+            "@type": "ListItem",
+            "position": index + 1,
+            "item": {
+                "@type": "LocalBusiness",
+                "name": listing.name,
+                "url": `https://happyendingmassagesantaana.top/${listing.slug}`,
+                "image": listing.thumbnail,
+                "address": {
+                    "@type": "PostalAddress",
+                    "addressLocality": "Santa Ana",
+                    "addressCountry": "El Salvador"
+                }
+            }
+        }))
+    })}></script>
+    
+    <!-- Schema.org - FAQPage -->
+    {faq && faq.length > 0 && (
+        <script type="application/ld+json" set:html={JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "FAQPage",
+            "mainEntity": faq.map((item: any) => ({
+                "@type": "Question",
+                "name": item.question,
+                "acceptedAnswer": {
+                    "@type": "Answer",
+                    "text": item.answer
+                }
+            }))
+        })}></script>
+    )}
+    
+    <!-- Schema.org - WebPage -->
+    <script type="application/ld+json" set:html={JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        "name": "Santa Ana Happy Ending Massage Scene Guide",
+        "description": "Find Happy Ending Massage in Santa Ana, El Salvador. Our growing directory lists parlors in central areas with sessions from 20-50 EUR. Practical info for visitors.",
+        "url": canonicalUrl,
+        "isPartOf": {
+            "@type": "WebSite",
+            "name": "Santa Ana Happy Ending Massage 🌍",
+            "url": "https://happyendingmassagesantaana.top"
+        },
+        "about": {
+            "@type": "Thing",
+            "name": "Happy Ending Massage in Santa Ana"
+        },
+        "breadcrumb": {
+            "@type": "BreadcrumbList",
+            "itemListElement": [
+                {
+                    "@type": "ListItem",
+                    "position": 1,
+                    "name": "Home",
+                    "item": "https://happyendingmassagesantaana.top"
+                }
+            ]
+        }
+    })}></script>
+    
+    <!-- Sticky CTA Footer for Live Cams -->
+    <a href="https://erotiklive.net/" target="_blank" rel="nofollow noopener" class="live-cta-sticky">
+        <span class="live-dot"></span>
+        <span class="live-text">Watch Girls Online</span>
+    </a>
+</Base>
+
+<style>
+    /* Sticky Live CTA Footer - Full Width */
+    .live-cta-sticky {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 9999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        padding: 18px 24px;
+        background: linear-gradient(135deg, #ec4899 0%, #f43f5e 100%);
+        color: white;
+        font-weight: 700;
+        font-size: 1.1rem;
+        text-decoration: none;
+        box-shadow: 
+            0 -4px 20px rgba(236, 72, 153, 0.4),
+            0 -2px 10px rgba(0, 0, 0, 0.15);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    .live-cta-sticky:hover {
+        background: linear-gradient(135deg, #db2777 0%, #e11d48 100%);
+    }
+    
+    .live-dot {
+        width: 14px;
+        height: 14px;
+        background: #22c55e;
+        border-radius: 50%;
+        animation: pulseDot 1.5s infinite;
+        box-shadow: 0 0 12px rgba(34, 197, 94, 0.9);
+    }
+    
+    .live-text {
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+    
+    @keyframes pulseDot {
+        0%, 100% { transform: scale(1); opacity: 1; }
+        50% { transform: scale(1.3); opacity: 0.85; }
+    }
+    
+    @media (max-width: 600px) {
+        .live-cta-sticky {
+            padding: 16px 20px;
+            font-size: 1rem;
+        }
+    }
+    
+    /* Compact Hero */
+    .hero-compact {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        color: white;
+        padding: 30px 0;
+        text-align: center;
+    }
+    .hero-compact h1 {
+        font-size: clamp(1.4rem, 4vw, 2rem);
+        margin-bottom: 8px;
+        font-weight: 700;
+    }
+    .hero-compact .hero-subtitle {
+        font-size: 0.95rem;
+        opacity: 0.9;
+        margin-bottom: 12px;
+    }
+    
+    /* Decorative emoji icons - hidden from SEO crawlers */
+    .heading-icon {
+        display: inline-block;
+        margin-right: 4px;
+        font-style: normal;
+    }
+    
+    .hero-badges {
+        display: flex;
+        gap: 10px;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+    .badge-stat {
+        background: rgba(255,255,255,0.2);
+        padding: 6px 14px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    .badge-stat.gold { background: rgba(255,215,0,0.3); }
+    .badge-stat.premium { background: rgba(255,255,255,0.25); }
+    .last-updated {
+        font-size: 0.8rem;
+        opacity: 0.7;
+        margin-top: 12px;
+    }
+    
+    /* Table of Contents */
+    .toc-section {
+        background: var(--card-bg);
+        padding: 20px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    .toc-title {
+        font-weight: 600;
+        font-size: 0.95rem;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+    .toc-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px 24px;
+        list-style: none;
+        padding: 16px 0 0;
+        margin: 0;
+    }
+    .toc-list li a {
+        font-size: 0.9rem;
+        color: var(--text);
+        text-decoration: none;
+        padding: 6px 12px;
+        background: var(--bg);
+        border-radius: 20px;
+        transition: all 0.2s ease;
+    }
+    .toc-list li a:hover {
+        background: var(--primary);
+        color: white;
+        text-decoration: none;
+    }
+    @media (max-width: 600px) {
+        .toc-list { flex-direction: column; gap: 8px; }
+        .toc-list li a { display: block; text-align: center; }
+    }
+    
+    /* Local Guide Section */
+    .local-guide {
+        padding: 60px 0;
+        background: var(--card-bg);
+    }
+    .local-guide h2 {
+        text-align: center;
+        margin-bottom: 40px;
+    }
+    .guide-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+        margin-bottom: 40px;
+    }
+    .guide-card {
+        background: var(--bg);
+        padding: 24px;
+        border-radius: 16px;
+    }
+    .guide-card h3 {
+        font-size: 1rem;
+        margin-bottom: 10px;
+        color: var(--text);
+    }
+    .guide-card p {
+        font-size: 0.9rem;
+        color: var(--text-light);
+        line-height: 1.6;
+    }
+    .guide-tips {
+        background: linear-gradient(135deg, var(--primary), var(--secondary));
+        padding: 30px;
+        border-radius: 16px;
+        color: white;
+    }
+    .guide-tips h3 {
+        margin-bottom: 16px;
+    }
+    .guide-tips ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+    }
+    .guide-tips li {
+        padding: 8px 0;
+        font-size: 0.95rem;
+        opacity: 0.95;
+    }
+    @media (max-width: 900px) {
+        .guide-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 500px) {
+        .guide-grid { grid-template-columns: 1fr; }
+    }
+    
+    /* Pricing Guide Section */
+    .pricing-guide {
+        padding: 60px 0;
+    }
+    .pricing-guide h2 {
+        text-align: center;
+        margin-bottom: 16px;
+    }
+    .pricing-intro {
+        text-align: center;
+        color: var(--text-light);
+        margin-bottom: 40px;
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+    }
+    .pricing-table {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    .price-tier {
+        background: var(--card-bg);
+        padding: 30px 24px;
+        border-radius: 16px;
+        text-align: center;
+        border: 2px solid var(--border);
+    }
+    .price-tier.featured {
+        border-color: var(--primary);
+        transform: scale(1.05);
+        box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+    }
+    .tier-label {
+        display: block;
+        font-weight: 700;
+        font-size: 1.1rem;
+        margin-bottom: 8px;
+        color: var(--text);
+    }
+    .tier-range {
+        display: block;
+        font-size: 1.2rem;
+        margin-bottom: 12px;
+    }
+    .price-tier p {
+        font-size: 0.9rem;
+        color: var(--text-light);
+        line-height: 1.5;
+    }
+    .pricing-note {
+        text-align: center;
+        font-size: 0.9rem;
+        color: var(--text-light);
+        background: var(--bg);
+        padding: 16px;
+        border-radius: 8px;
+    }
+    @media (max-width: 768px) {
+        .pricing-table { grid-template-columns: 1fr; }
+        .price-tier.featured { transform: none; }
+    }
+    
+    /* Listings Grid - Mobile First (1 col mobile, 2 tablet, 3 desktop) */
+    .listings-grid-3 {
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    @media (min-width: 540px) {
+        .listings-grid-3 { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (min-width: 900px) {
+        .listings-grid-3 { grid-template-columns: repeat(3, 1fr); }
+    }
+    
+    /* Related Categories - Cross Promotion */
+    .related-categories {
+        background: linear-gradient(135deg, var(--bg) 0%, var(--card-bg) 100%);
+        padding: 40px 0;
+        border-top: 1px solid var(--border);
+    }
+    .related-categories h2 {
+        font-size: 1.5rem;
+        margin-bottom: 8px;
+        text-align: center;
+    }
+    .related-categories .section-intro {
+        text-align: center;
+        color: var(--text-light);
+        margin-bottom: 30px;
+    }
+    .related-category-block {
+        margin-bottom: 30px;
+    }
+    .related-category-block:last-child {
+        margin-bottom: 0;
+    }
+    .related-category-block h3 {
+        font-size: 1.2rem;
+        margin-bottom: 16px;
+        padding-bottom: 8px;
+        border-bottom: 2px solid var(--primary);
+        display: inline-block;
+    }
+    
+    @media (max-width: 768px) {
+        .related-categories {
+            padding: 24px 0;
+        }
+        .related-categories h2 {
+            font-size: 1.25rem;
+        }
+        .related-category-block h3 {
+            font-size: 1rem;
+        }
+    }
+    
+    /* About Section */
+    .about-section {
+        background: var(--card-bg);
+        padding: 40px 0;
+    }
+    .about-section h2 {
+        font-size: 1.4rem;
+        margin-bottom: 16px;
+    }
+    .about-content {
+        color: var(--text-light);
+        line-height: 1.7;
+    }
+    .about-content p { margin-bottom: 14px; }
+    .about-content h2 {
+        font-size: 1.25rem;
+        font-weight: 700;
+        margin-top: 32px;
+        margin-bottom: 12px;
+        color: var(--text);
+        padding-top: 12px;
+        border-top: 1px solid rgba(0,0,0,0.06);
+    }
+    .about-content h2:first-child {
+        margin-top: 0;
+        padding-top: 0;
+        border-top: none;
+    }
+    
+    /* Listings Section */
+    .listings-header {
+        margin-bottom: 16px;
+    }
+    
+    .listings-header h2 {
+        font-size: 1.5rem;
+        font-weight: 700;
+        margin-bottom: 8px;
+        color: var(--text);
+    }
+    
+    .listings-intro {
+        color: var(--text-light);
+        font-size: 0.95rem;
+        line-height: 1.5;
+    }
+    
+    .listings-intro.fallback-notice {
+        background: linear-gradient(135deg, var(--primary-light, #f0f7ff) 0%, var(--bg) 100%);
+        padding: 12px 16px;
+        border-radius: 8px;
+        border-left: 3px solid var(--primary);
+        font-size: 0.9rem;
+    }
+    
+    .listings-intro.fallback-notice strong {
+        color: var(--primary);
+    }
+    
+    .section-intro {
+        color: var(--text-light);
+        margin-bottom: 25px;
+    }
+    .premium-section {
+        background: linear-gradient(135deg, #D4AF3710, #F4D03F10);
+    }
+    .cta-box {
+        background: linear-gradient(135deg, var(--primary)10, var(--secondary)10);
+        padding: 30px;
+        border-radius: 12px;
+        margin-top: 30px;
+        text-align: center;
+    }
+    .cta-box h3 {
+        margin-bottom: 10px;
+    }
+    .cta-box p {
+        margin-bottom: 20px;
+        color: var(--text-light);
+    }
+    .sitemap-links {
+        padding: 40px 0;
+        background: var(--bg);
+    }
+    .sitemap-links h2 {
+        font-size: 1.2rem;
+        margin-bottom: 20px;
+    }
+    .venue-links {
+        column-count: 3;
+        column-gap: 30px;
+        list-style: none;
+        padding: 0;
+    }
+    .venue-links li {
+        margin-bottom: 8px;
+        break-inside: avoid;
+    }
+    .venue-links a {
+        font-size: 13px;
+        color: var(--text-light);
+    }
+    .venue-links a:hover {
+        color: var(--primary);
+    }
+    @media (max-width: 768px) {
+        .venue-links {
+            column-count: 1;
+        }
+    }
+</style>
